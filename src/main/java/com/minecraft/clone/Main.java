@@ -3,9 +3,17 @@ package com.minecraft.clone;
 import org.lwjgl.glfw.GLFWErrorCallback;
 import org.lwjgl.glfw.GLFWVidMode;
 import org.lwjgl.opengl.GL;
+import org.lwjgl.system.Configuration;
 import org.lwjgl.system.MemoryStack;
 
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.IntBuffer;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 
 import static org.lwjgl.glfw.Callbacks.*;
 import static org.lwjgl.glfw.GLFW.*;
@@ -31,7 +39,38 @@ public class Main {
         glfwTerminate();
     }
 
+    private void extractNatives() throws IOException {
+        String tempDir = System.getProperty("java.io.tmpdir") + "/lwjgl-natives-" + System.nanoTime();
+        new File(tempDir).mkdirs();
+        Configuration.LIBRARY_PATH.set(tempDir);
+
+        String jarPath = Main.class.getProtectionDomain().getCodeSource().getLocation().getPath();
+        jarPath = java.net.URLDecoder.decode(jarPath, "UTF-8");
+
+        try (ZipFile zip = new ZipFile(jarPath)) {
+            zip.stream().forEach(entry -> {
+                String name = entry.getName();
+                if (name.startsWith("natives/") && !entry.isDirectory()) {
+                    String fileName = name.substring("natives/".length());
+                    File dest = new File(tempDir, fileName);
+                    dest.getParentFile().mkdirs();
+                    try (InputStream in = zip.getInputStream(entry)) {
+                        Files.copy(in, dest.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+            });
+        }
+    }
+
     private void init() {
+        try {
+            extractNatives();
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to extract native libraries", e);
+        }
+
         GLFWErrorCallback.createPrint(System.err).set();
 
         if (!glfwInit()) {
